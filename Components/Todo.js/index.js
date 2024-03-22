@@ -1,5 +1,6 @@
 import {
   Alert,
+  Button,
   Dimensions,
   ScrollView,
   StyleSheet,
@@ -8,18 +9,33 @@ import {
   View
 }
   from 'react-native';
-import { database } from '../..';
+import mySync, { database, deleteLocalData } from '../..';
 import React, { useState, useEffect } from 'react';
 import AddBtn from 'react-native-vector-icons/AntDesign';
-import DeleteIcon from 'react-native-vector-icons/MaterialCommunityIcons'
+import DeleteIcon from 'react-native-vector-icons/MaterialCommunityIcons';
 const { width, height } = Dimensions.get('window')
 const Todo = () => {
 
-  const [taskCount, setTaskCount] = useState(0);
   const [todos, setTodos] = useState([]);
   const [newTaskDescription, setNewTaskDescription] = useState('');
   // console.log('database.......', database)
   const tasksCollection = database.collections.get('tasks')
+
+  useEffect(() => {
+    const fetchTodos = async () => {
+      try {
+        const fetchedTodos = await tasksCollection.query().fetch();
+        setTodos(fetchedTodos);
+      } catch (error) {
+        console.error('Error fetching todos:', error);
+      }
+    };
+    fetchTodos();
+    const subscription = tasksCollection.query().observe().subscribe((todos) => {
+      setTodos(todos);
+    });
+    return () => subscription.unsubscribe();
+  }, [database]);
 
   const handleAddTodo = async () => {
     if (!newTaskDescription.trim()) {
@@ -28,14 +44,17 @@ const Todo = () => {
     }
 
     try {
-      await database.write(async () => {
+      await database.write(async () => {//create a new task within write operation
         const createdTask = await tasksCollection.create((task) => {
           task.description = newTaskDescription;
           task.isComplete = false;
+          task._status = 'created'; 
         });
+        // console.log('createdTask.......',createdTask)
+        mySync()
       });
       setNewTaskDescription('');
-      const fetchedTodos = await tasksCollection.query();
+      const fetchedTodos = await tasksCollection.query();//it fetches updated todolist from db
       setTodos(fetchedTodos);
     } catch (error) {
       console.error('Error adding todo:', error);
@@ -66,7 +85,8 @@ const Todo = () => {
         ID: task.id,
         Description: task.description,
         IsCompleted: task.isCompleted,
-        CreatedAt: task.createdAt.toString()
+        CreatedAt: task.createdAt.toString(),
+        status: task?._raw?._status
       })));
     } catch (error) {
       console.error('Error querying database:', error);
@@ -114,6 +134,11 @@ const Todo = () => {
             )}
             <Text style={styles.footerText}>{`There are ${todos.length} tasks are pending`}</Text>
           </View>
+        </View>
+        <View style={{margin: 20}}>
+        <Button title='Sync Data' 
+        onPress={deleteLocalData}
+        />
         </View>
       </View>
     </ScrollView>
